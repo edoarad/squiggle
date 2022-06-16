@@ -19,6 +19,7 @@ chosen from the second distribution.
   initialSquiggleString={`dist1 = 1 to 10
 dist2 = triangular(1,2,3)
 dist1 + dist2`}
+  height={60}
 />
 
 ### Subtraction
@@ -31,6 +32,7 @@ the value of one random sample chosen from the second distribution.
   initialSquiggleString={`dist1 = 1 to 10
 dist2 = triangular(1,2,3)
 dist1 - dist2`}
+  height={60}
 />
 
 ### Multiplication
@@ -43,11 +45,8 @@ chosen from the second distribution.
   initialSquiggleString={`dist1 = 1 to 10
 dist2 = triangular(1,2,3)
 dist1 * dist2`}
+  height={60}
 />
-
-We also provide concatenation of two distributions as a syntax sugar for `*`
-
-<SquiggleEditor initialSquiggleString="(0.1 to 1) triangular(1,2,3)" />
 
 ### Division
 
@@ -61,6 +60,7 @@ tends to be particularly unstable.
   initialSquiggleString={`dist1 = 1 to 10
 dist2 = triangular(1,2,3)
 dist1 / dist2`}
+  height={60}
 />
 
 ### Exponentiation
@@ -69,13 +69,14 @@ A projection over a contracted x-axis. The exponentiation operation represents t
 the exponentiation of the value of one random sample chosen from the first distribution to the power of
 the value one random sample chosen from the second distribution.
 
-<SquiggleEditor initialSquiggleString={`(0.1 to 1) ^ beta(2, 3)`} />
+<SquiggleEditor initialSquiggleString={`(0.1 to 1) ^ beta(2, 3)`} height={60} />
 
 ### Taking the base `e` exponential
 
 <SquiggleEditor
   initialSquiggleString={`dist = triangular(1,2,3)
 exp(dist)`}
+  height={60}
 />
 
 ### Taking logarithms
@@ -85,19 +86,22 @@ A projection over a stretched x-axis.
 <SquiggleEditor
   initialSquiggleString={`dist = triangular(1,2,3)
 log(dist)`}
+  height={60}
 />
 
 <SquiggleEditor
-  initialSquiggleString={`dist = beta(1,2)
+  initialSquiggleString={`dist = beta(1,2)+1
 log10(dist)`}
+  height={60}
 />
 
 Base `x`
 
 <SquiggleEditor
   initialSquiggleString={`x = 2
-dist = beta(2,3)
+dist = beta(2,3)+1
 log(dist, x)`}
+  height={60}
 />
 
 #### Validity
@@ -111,22 +115,20 @@ For every point on the x-axis, operate the corresponding points in the y axis of
 
 **Pointwise operations are done with `PointSetDist` internals rather than `SampleSetDist` internals**.
 
-TODO: this isn't in the new interpreter/parser yet.
-
 <SquiggleEditor
   initialSquiggleString={`dist1 = 1 to 10
 dist2 = triangular(1,2,3)
 dist1 .+ dist2`}
+  height={60}
 />
 
 ### Pointwise subtraction
-
-TODO: this isn't in the new interpreter/parser yet.
 
 <SquiggleEditor
   initialSquiggleString={`dist1 = 1 to 10
 dist2 = triangular(1,2,3)
 dist1 .- dist2`}
+  height={60}
 />
 
 ### Pointwise multiplication
@@ -135,6 +137,7 @@ dist1 .- dist2`}
   initialSquiggleString={`dist1 = 1 to 10
 dist2 = triangular(1,2,3)
 dist1 .* dist2`}
+  height={60}
 />
 
 ### Pointwise division
@@ -143,6 +146,7 @@ dist1 .* dist2`}
   initialSquiggleString={`dist1 = uniform(0,20)
 dist2 = normal(10,8)
 dist1 ./ dist2`}
+  height={60}
 />
 
 ### Pointwise exponentiation
@@ -151,6 +155,7 @@ dist1 ./ dist2`}
   initialSquiggleString={`dist1 = 1 to 10
 dist2 = triangular(1,2,3)
 dist1 .^ dist2`}
+  height={60}
 />
 
 ## Standard functions on distributions
@@ -160,7 +165,7 @@ dist1 .^ dist2`}
 The `pdf(dist, x)` function returns the density of a distribution at the
 given point x.
 
-<SquiggleEditor initialSquiggleString="pdf(normal(0,1),0)" />
+<SquiggleEditor initialSquiggleString="pdf(normal(0,1),0)" height={60} />
 
 #### Validity
 
@@ -172,7 +177,7 @@ given point x.
 The `cdf(dist, x)` gives the cumulative probability of the distribution
 or all values lower than x. It is the inverse of `quantile`.
 
-<SquiggleEditor initialSquiggleString="cdf(normal(0,1),0)" />
+<SquiggleEditor initialSquiggleString="cdf(normal(0,1),0)" height={60} />
 
 #### Validity
 
@@ -185,7 +190,7 @@ The `quantile(dist, prob)` gives the value x or which the probability for all va
 lower than x is equal to prob. It is the inverse of `cdf`. In the literature, it
 is also known as the quantiles function.
 
-<SquiggleEditor initialSquiggleString="quantile(normal(0,1),0.5)" />
+<SquiggleEditor initialSquiggleString="quantile(normal(0,1),0.5)" height={60} />
 
 #### Validity
 
@@ -196,29 +201,35 @@ is also known as the quantiles function.
 
 The `mean(distribution)` function gives the mean (expected value) of a distribution.
 
-<SquiggleEditor initialSquiggleString="mean(normal(5, 10))" />
+<SquiggleEditor initialSquiggleString="mean(normal(5, 10))" height={60} />
 
 ### Sampling a distribution
 
 The `sample(distribution)` samples a given distribution.
 
-<SquiggleEditor initialSquiggleString="sample(normal(0, 10))" />
+<SquiggleEditor initialSquiggleString="sample(normal(0, 10))" height={60} />
 
 ## Converting between distribution formats
 
 Recall the [three formats of distributions](https://develop--squiggle-documentation.netlify.app/docs/Discussions/Three-Types-Of-Distributions). We can force any distribution into `SampleSet` format
 
-<SquiggleEditor initialSquiggleString="toSampleSet(normal(5, 10))" />
+<SquiggleEditor
+  initialSquiggleString="toSampleSet(normal(5, 10))"
+  height={60}
+/>
 
 Or `PointSet` format
 
-<SquiggleEditor initialSquiggleString="toPointSet(normal(5, 10))" />
+<SquiggleEditor initialSquiggleString="toPointSet(normal(5, 10))" height={60} />
 
 ### `toSampleSet` has two signatures
 
 Above, we saw the unary `toSampleSet`, which uses an internal hardcoded number of samples. If you'd like to provide the number of samples, it has a binary signature as well (floored)
 
-<SquiggleEditor initialSquiggleString="[toSampleSet(0.1 to 1, 100.1), toSampleSet(0.1 to 1, 5000), toSampleSet(0.1 to 1, 20000)]" />
+<SquiggleEditor
+  initialSquiggleString="[toSampleSet(0.1 to 1, 100.1), toSampleSet(0.1 to 1, 5000), toSampleSet(0.1 to 1, 20000)]"
+  height={60}
+/>
 
 #### Validity
 
@@ -230,13 +241,19 @@ Some distribution operations (like horizontal shift) return an unnormalized dist
 
 We provide a `normalize` function
 
-<SquiggleEditor initialSquiggleString="normalize((0.1 to 1) + triangular(0.1, 1, 10))" />
+<SquiggleEditor
+  initialSquiggleString="normalize((0.1 to 1) + triangular(0.1, 1, 10))"
+  height={60}
+/>
 
 #### Validity - Input to `normalize` must be a dist
 
 We provide a predicate `isNormalized`, for when we have simple control flow
 
-<SquiggleEditor initialSquiggleString="isNormalized((0.1 to 1) * triangular(0.1, 1, 10))" />
+<SquiggleEditor
+  initialSquiggleString="isNormalized((0.1 to 1) * triangular(0.1, 1, 10))"
+  height={60}
+/>
 
 #### Validity
 
@@ -246,20 +263,28 @@ We provide a predicate `isNormalized`, for when we have simple control flow
 
 You may like to debug by right clicking your browser and using the _inspect_ functionality on the webpage, and viewing the _console_ tab. Then, wrap your squiggle output with `inspect` to log an internal representation.
 
-<SquiggleEditor initialSquiggleString="inspect(toSampleSet(0.1 to 1, 100))" />
+<SquiggleEditor
+  initialSquiggleString="inspect(toSampleSet(0.1 to 1, 100))"
+  height={60}
+/>
 
 Save for a logging side effect, `inspect` does nothing to input and returns it.
 
 ## Truncate
 
-You can cut off from the left
+You can truncate the left side, the right side, or both.
 
-<SquiggleEditor initialSquiggleString="truncateLeft(0.1 to 1, 0.5)" />
+<SquiggleEditor
+  initialSquiggleString="truncateLeft(0.1 to 1, 0.5)"
+  height={40}
+/>
 
-You can cut off from the right
+<SquiggleEditor
+  initialSquiggleString="truncateRight(0.1 to 1, 0.5)"
+  height={40}
+/>
 
-<SquiggleEditor initialSquiggleString="truncateRight(0.1 to 1, 0.5)" />
-
-You can cut off from both sides
-
-<SquiggleEditor initialSquiggleString="truncate(0.1 to 1, 0.5, 1.5)" />
+<SquiggleEditor
+  initialSquiggleString="truncate(0.1 to 1, 0.5, 1.5)"
+  height={40}
+/>

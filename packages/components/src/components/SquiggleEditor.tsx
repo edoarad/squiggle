@@ -26,6 +26,7 @@ export interface SquiggleEditorProps {
   diagramStart?: number;
   /** If the result is a function, where the function ends */
   diagramStop?: number;
+  height?: number;
   /** If the result is a function, how many points along the function it samples */
   diagramCount?: number;
   /** when the environment changes. Used again for notebook magic*/
@@ -51,6 +52,7 @@ export let SquiggleEditor: React.FC<SquiggleEditorProps> = ({
   diagramStart = 0,
   diagramStop = 10,
   diagramCount = 20,
+  height = 200,
   onChange,
   bindings = defaultBindings,
   jsImports = defaultImports,
@@ -78,6 +80,7 @@ export let SquiggleEditor: React.FC<SquiggleEditorProps> = ({
         </div>
         <SquiggleChart
           width={width}
+          height={height}
           environment={environment}
           squiggleString={expression}
           chartSettings={chartSettings}
