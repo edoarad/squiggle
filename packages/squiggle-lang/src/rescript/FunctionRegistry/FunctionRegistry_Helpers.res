@@ -2,8 +2,8 @@ open FunctionRegistry_Core
 open Reducer_T
 
 let impossibleErrorString = "Wrong inputs / Logically impossible"
-let impossibleError: errorValue = impossibleErrorString->Reducer_ErrorValue.REOther
-let wrapError = e => Reducer_ErrorValue.REOther(e)
+let impossibleError: errorMessage = impossibleErrorString->SqError.Message.REOther
+let wrapError = e => SqError.Message.REOther(e)
 
 module Wrappers = {
   let symbolic = r => DistributionTypes.Symbolic(r)
@@ -15,10 +15,10 @@ module Wrappers = {
   let evRecord = r => Reducer_T.IEvRecord(r)
   let evString = r => Reducer_T.IEvString(r)
   let symbolicEvDistribution = r => r->DistributionTypes.Symbolic->evDistribution
-  let evArrayOfEvNumber = xs => xs->Belt.Array.map(evNumber)->evArray
+  let evArrayOfEvNumber = xs => xs->E.A.fmap(evNumber)->evArray
 }
 
-let getOrError = (a, g) => E.A.get(a, g) |> E.O.toResult(impossibleErrorString)
+let getOrError = (a, g) => E.A.get(a, g)->E.O.toResult(impossibleErrorString)
 
 module Prepare = {
   type t = value
@@ -34,6 +34,7 @@ module Prepare = {
             let n2 = map->Belt.Map.String.getExn(arg2)
             Ok([n1, n2])
           }
+
         | _ => Error(impossibleErrorString)
         }
 
@@ -45,6 +46,7 @@ module Prepare = {
             let n3 = map->Belt.Map.String.getExn(arg3)
             Ok([n1, n2, n3])
           }
+
         | _ => Error(impossibleErrorString)
         }
     }
@@ -58,7 +60,7 @@ module Prepare = {
 
       let arrayOfArrays = (inputs: t): result<array<ts>, err> =>
         switch inputs {
-        | IEvArray(n) => n->E.A2.fmap(openA)->E.A.R.firstErrorOrOpen
+        | IEvArray(n) => n->E.A.fmap(openA)->E.A.R.firstErrorOrOpen
         | _ => Error(impossibleErrorString)
         }
     }
@@ -137,12 +139,12 @@ module Prepare = {
   module ToTypedArray = {
     let numbers = (inputs: ts): result<array<float>, err> => {
       let openNumbers = (elements: array<t>) =>
-        elements->E.A2.fmap(oneNumber)->E.A.R.firstErrorOrOpen
+        elements->E.A.fmap(oneNumber)->E.A.R.firstErrorOrOpen
       inputs->getOrError(0)->E.R.bind(ToValueArray.Array.openA)->E.R.bind(openNumbers)
     }
 
     let dicts = (inputs: ts): Belt.Result.t<array<Reducer_T.map>, err> => {
-      let openDicts = (elements: array<t>) => elements->E.A2.fmap(oneDict)->E.A.R.firstErrorOrOpen
+      let openDicts = (elements: array<t>) => elements->E.A.fmap(oneDict)->E.A.R.firstErrorOrOpen
       inputs->getOrError(0)->E.R.bind(ToValueArray.Array.openA)->E.R.bind(openDicts)
     }
   }
@@ -159,7 +161,7 @@ module Process = {
         | Error(r) => Error(Operation.Other(r))
         }
 
-      let wrapSymbolic = (fn, r) => r->fn->E.R2.fmap(Wrappers.symbolic)
+      let wrapSymbolic = (fn, r) => r->fn->E.R.fmap(Wrappers.symbolic)
 
       let singleVarSample = (dist, fn, env) => {
         switch toSampleSet(dist, env) {
@@ -288,7 +290,7 @@ module Make = {
       ~name,
       ~nameSpace,
       ~requiresNamespace,
-      ~examples=examples->E.O.default([], _),
+      ~examples=examples->E.O.default([]),
       ~output=EvtNumber,
       ~definitions=[
         FnDefinition.make(
@@ -318,7 +320,7 @@ module Make = {
       ~name,
       ~nameSpace,
       ~requiresNamespace,
-      ~examples=examples->E.O.default([], _),
+      ~examples=examples->E.O.default([]),
       ~output=EvtNumber,
       ~definitions=[
         FnDefinition.make(
@@ -348,7 +350,7 @@ module Make = {
       ~name,
       ~nameSpace,
       ~requiresNamespace,
-      ~examples=examples->E.O.default([], _),
+      ~examples=examples->E.O.default([]),
       ~output=EvtBool,
       ~definitions=[
         FnDefinition.make(
@@ -378,7 +380,7 @@ module Make = {
       ~name,
       ~nameSpace,
       ~requiresNamespace,
-      ~examples=examples->E.O.default([], _),
+      ~examples=examples->E.O.default([]),
       ~output=EvtBool,
       ~definitions=[
         FnDefinition.make(

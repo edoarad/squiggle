@@ -37,10 +37,10 @@ let sampleN = (t: t, n) =>
   | SampleSet(r) => SampleSetDist.sampleN(r, n)
   }
 
-let sample = (t: t) => sampleN(t, 1)->E.A.first |> E.O.toExn("Should not have happened")
+let sample = (t: t) => sampleN(t, 1)->E.A.first->E.O.toExn("Should not have happened")
 
 let toSampleSetDist = (t: t, n) =>
-  SampleSetDist.make(sampleN(t, n))->E.R2.errMap(DistributionTypes.Error.sampleErrorToDistErr)
+  SampleSetDist.make(sampleN(t, n))->E.R.errMap(DistributionTypes.Error.sampleErrorToDistErr)
 
 let fromFloat = (f: float): t => Symbolic(SymbolicDist.Float.make(f))
 
@@ -95,10 +95,11 @@ let toFloatOperation = (
       | None =>
         switch trySampleSetSolution {
         | Some(r) => Ok(r)
-        | None => toPointSetFn(t)->E.R2.fmap(PointSetDist.operate(op))
+        | None => toPointSetFn(t)->E.R.fmap(PointSetDist.operate(op))
         }
       }
     }
+
   | (#Stdev | #Variance | #Mode) as op =>
     switch t {
     | SampleSet(s) =>
@@ -129,12 +130,12 @@ let toPointSet = (
     SampleSetDist.toPointSetDist(
       ~samples=r,
       ~samplingInputs={
-        sampleCount: sampleCount,
+        sampleCount,
         outputXYPoints: xyPointLength,
         pointSetDistLength: xyPointLength,
         kernelWidth: None,
       },
-    )->E.R2.errMap(x => DistributionTypes.PointSetConversionError(x))
+    )->E.R.errMap(x => DistributionTypes.PointSetConversionError(x))
   }
 }
 
@@ -163,11 +164,11 @@ module Score = {
     > => E.R.merge(toPointSetFn(esti'), toPointSetFn(answ'))
     switch (esti, answ, prior') {
     | (esti', Score_Dist(answ'), None) =>
-      twoDists(~toPointSetFn, esti', answ')->E.R2.fmap(((esti'', answ'')) =>
+      twoDists(~toPointSetFn, esti', answ')->E.R.fmap(((esti'', answ'')) =>
         {estimate: esti'', answer: answ'', prior: None}->PointSetDist_Scoring.DistAnswer
       )
     | (esti', Score_Dist(answ'), Some(Ok(prior''))) =>
-      twoDists(~toPointSetFn, esti', answ')->E.R2.fmap(((esti'', answ'')) =>
+      twoDists(~toPointSetFn, esti', answ')->E.R.fmap(((esti'', answ'')) =>
         {
           estimate: esti'',
           answer: answ'',
@@ -175,7 +176,7 @@ module Score = {
         }->PointSetDist_Scoring.DistAnswer
       )
     | (esti', Score_Scalar(answ'), None) =>
-      toPointSetFn(esti')->E.R2.fmap(esti'' =>
+      toPointSetFn(esti')->E.R.fmap(esti'' =>
         {
           estimate: esti'',
           answer: answ',
@@ -183,7 +184,7 @@ module Score = {
         }->PointSetDist_Scoring.ScalarAnswer
       )
     | (esti', Score_Scalar(answ'), Some(Ok(prior''))) =>
-      toPointSetFn(esti')->E.R2.fmap(esti'' =>
+      toPointSetFn(esti')->E.R.fmap(esti'' =>
         {
           estimate: esti'',
           answer: answ',
@@ -199,7 +200,7 @@ module Score = {
     error,
   > =>
     argsMake(~esti=estimate, ~answ=answer, ~prior, ~env)->E.R.bind(x =>
-      x->PointSetDist.logScore->E.R2.errMap(y => DistributionTypes.OperationError(y))
+      x->PointSetDist.logScore->E.R.errMap(y => DistributionTypes.OperationError(y))
     )
 }
 /*
@@ -212,7 +213,7 @@ let toSparkline = (t: t, ~sampleCount: int, ~bucketCount: int=20, ()): result<st
   t
   ->toPointSet(~xSelection=#Linear, ~xyPointLength=bucketCount * 3, ~sampleCount, ())
   ->E.R.bind(r =>
-    r->PointSetDist.toSparkline(bucketCount)->E.R2.errMap(x => DistributionTypes.SparklineError(x))
+    r->PointSetDist.toSparkline(bucketCount)->E.R.errMap(x => DistributionTypes.SparklineError(x))
   )
 
 module Truncate = {
@@ -251,7 +252,7 @@ module Truncate = {
           | Error(err) => Error(DistributionTypes.SampleSetError(err))
           }
         | _ =>
-          toPointSetFn(t)->E.R2.fmap(t => {
+          toPointSetFn(t)->E.R.fmap(t => {
             DistributionTypes.PointSet(
               PointSetDist.T.truncate(leftCutoff, rightCutoff, t)->PointSetDist.T.normalize,
             )
@@ -283,7 +284,7 @@ module AlgebraicCombination = {
           t,
           ~toPointSetFn,
           ~distToFloatOperation=#Cdf(MagicNumbers.Epsilon.ten),
-        )->E.R2.fmap(r => r > 0.)
+        )->E.R.fmap(r => r > 0.)
 
       let items = E.A.R.firstErrorOrOpen([isDistGreaterThanZero(t1), isDistGreaterThanZero(t2)])
       switch items {
@@ -314,8 +315,8 @@ module AlgebraicCombination = {
       t2: t,
     ): result<t, error> =>
       E.R.merge(toPointSet(t1), toPointSet(t2))
-      ->E.R2.fmap(((a, b)) => PointSetDist.combineAlgebraically(arithmeticOperation, a, b))
-      ->E.R2.fmap(r => DistributionTypes.PointSet(r))
+      ->E.R.fmap(((a, b)) => PointSetDist.combineAlgebraically(arithmeticOperation, a, b))
+      ->E.R.fmap(r => DistributionTypes.PointSet(r))
 
     let monteCarlo = (
       toSampleSet: toSampleSetFn,
@@ -326,9 +327,9 @@ module AlgebraicCombination = {
       let fn = Operation.Algebraic.toFn(arithmeticOperation)
       E.R.merge(toSampleSet(t1), toSampleSet(t2))
       ->E.R.bind(((t1, t2)) => {
-        SampleSetDist.map2(~fn, ~t1, ~t2)->E.R2.errMap(x => DistributionTypes.SampleSetError(x))
+        SampleSetDist.map2(~fn, ~t1, ~t2)->E.R.errMap(x => DistributionTypes.SampleSetError(x))
       })
-      ->E.R2.fmap(r => DistributionTypes.SampleSet(r))
+      ->E.R.fmap(r => DistributionTypes.SampleSet(r))
     }
 
     let symbolic = (
@@ -427,6 +428,7 @@ module AlgebraicCombination = {
           ~toSampleSetFn,
         )
       }
+
     | (None, AsMonteCarlo) =>
       StrategyCallOnValidatedInputs.monteCarlo(toSampleSetFn, arithmeticOperation, t1, t2)
     | (None, AsSymbolic) =>
@@ -443,6 +445,7 @@ module AlgebraicCombination = {
             )}`
           Error(RequestedStrategyInvalidError(errString))
         }
+
       | Some(convOp) => StrategyCallOnValidatedInputs.convolution(toPointSetFn, convOp, t1, t2)
       }
     }
@@ -460,8 +463,8 @@ let pointwiseCombination = (
 ): result<t, error> => {
   E.R.merge(toPointSetFn(t1), toPointSetFn(t2))->E.R.bind(((t1, t2)) =>
     PointSetDist.combinePointwise(Operation.Algebraic.toFn(algebraicCombination), t1, t2)
-    ->E.R2.fmap(r => DistributionTypes.PointSet(r))
-    ->E.R2.errMap(err => DistributionTypes.OperationError(err))
+    ->E.R.fmap(r => DistributionTypes.PointSet(r))
+    ->E.R.errMap(err => DistributionTypes.OperationError(err))
   )
 }
 
@@ -480,9 +483,9 @@ let pointwiseCombinationFloat = (
       PointSetDist.T.mapYResult(
         ~integralSumCacheFn=integralSumCacheFn(f),
         ~integralCacheFn=integralCacheFn(f),
-        ~fn=fn(f),
         t,
-      )->E.R2.errMap(x => DistributionTypes.OperationError(x))
+        fn(f),
+      )->E.R.errMap(x => DistributionTypes.OperationError(x))
     })
   let m = switch algebraicCombination {
   | #Add | #Subtract => Error(DistributionTypes.DistributionVerticalShiftIsInvalid)
@@ -490,7 +493,7 @@ let pointwiseCombinationFloat = (
     executeCombination(arithmeticOperation)
   | #LogarithmWithThreshold(eps) => executeCombination(#LogarithmWithThreshold(eps))
   }
-  m->E.R2.fmap(r => DistributionTypes.PointSet(r))
+  m->E.R.fmap(r => DistributionTypes.PointSet(r))
 }
 
 //TODO: The result should always cumulatively sum to 1. This would be good to test.
@@ -501,16 +504,16 @@ let mixture = (
   ~pointwiseAddFn: pointwiseAddFn,
   ~env: env,
 ) => {
-  let allValuesAreSampleSet = v => E.A.all(((t, _)) => isSampleSetSet(t), v)
+  let allValuesAreSampleSet = v => E.A.every(v, ((t, _)) => isSampleSetSet(t))
 
   if E.A.isEmpty(values) {
     Error(DistributionTypes.OtherError("Mixture error: mixture must have at least 1 element"))
   } else if allValuesAreSampleSet(values) {
-    let withSampleSetValues = values->E.A2.fmap(((value, weight)) =>
+    let withSampleSetValues = values->E.A.fmap(((value, weight)) =>
       switch value {
       | SampleSet(sampleSet) => Ok((sampleSet, weight))
       | _ => Error("Unreachable")
-      }->E.R2.toExn("Mixture coding error: SampleSet expected. This should be inaccessible.")
+      }->E.R.toExn("Mixture coding error: SampleSet expected. This should be inaccessible.")
     )
     let sampleSetMixture = SampleSetDist.mixture(withSampleSetValues, env.sampleCount)
     switch sampleSetMixture {
@@ -518,17 +521,16 @@ let mixture = (
     | Error(err) => Error(DistributionTypes.Error.sampleErrorToDistErr(err))
     }
   } else {
-    let totalWeight = values->E.A2.fmap(E.Tuple2.second)->E.A.Floats.sum
+    let totalWeight = values->E.A.fmap(E.Tuple2.second)->E.A.Floats.sum
     let properlyWeightedValues =
       values
-      ->E.A2.fmap(((dist, weight)) => scaleMultiplyFn(dist, weight /. totalWeight))
+      ->E.A.fmap(((dist, weight)) => scaleMultiplyFn(dist, weight /. totalWeight))
       ->E.A.R.firstErrorOrOpen
     properlyWeightedValues->E.R.bind(values => {
       values
-      |> Js.Array.sliceFrom(1)
-      |> E.A.fold_left(
-        (acc, x) => E.R.bind(acc, acc => pointwiseAddFn(acc, x)),
-        Ok(E.A.unsafe_get(values, 0)),
+      ->Belt.Array.sliceToEnd(1)
+      ->E.A.fold_left(Ok(E.A.unsafe_get(values, 0)), (acc, x) =>
+        E.R.bind(acc, acc => pointwiseAddFn(acc, x))
       )
     })
   }

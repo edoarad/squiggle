@@ -1,5 +1,5 @@
 type internalExpressionValueType = Reducer_Value.internalExpressionValueType
-type errorValue = Reducer_ErrorValue.errorValue
+type errorMessage = SqError.Message.t
 
 /*
   Function Registry "Type". A type, without any other information.
@@ -30,9 +30,9 @@ type fnDefinition = {
   inputs: array<frType>,
   run: (
     array<Reducer_T.value>,
-    Reducer_T.environment,
+    Reducer_T.context,
     Reducer_T.reducerFn,
-  ) => result<Reducer_T.value, errorValue>,
+  ) => result<Reducer_T.value, errorMessage>,
 }
 
 type function = {
@@ -59,8 +59,9 @@ module FRType = {
     | FRTypeDistOrNumber => "distribution|number"
     | FRTypeRecord(r) => {
         let input = ((name, frType): frTypeRecordParam) => `${name}: ${toString(frType)}`
-        `{${r->E.A2.fmap(input)->E.A2.joinWith(", ")}}`
+        `{${r->E.A.fmap(input)->E.A.joinWith(", ")}}`
       }
+
     | FRTypeArray(r) => `list(${toString(r)})`
     | FRTypeLambda => `lambda`
     | FRTypeString => `string`
@@ -84,11 +85,11 @@ module FRType = {
     | (FRTypeNumeric, IEvDistribution(Symbolic(#Float(_)))) => true
     | (FRTypeLambda, IEvLambda(_)) => true
     | (FRTypeArray(intendedType), IEvArray(elements)) =>
-      elements->Belt.Array.every(v => matchWithValue(intendedType, v))
+      elements->E.A.every(v => matchWithValue(intendedType, v))
     | (FRTypeDict(r), IEvRecord(map)) =>
-      map->Belt.Map.String.valuesToArray->Belt.Array.every(v => matchWithValue(r, v))
+      map->Belt.Map.String.valuesToArray->E.A.every(v => matchWithValue(r, v))
     | (FRTypeRecord(recordParams), IEvRecord(map)) =>
-      recordParams->Belt.Array.every(((name, input)) => {
+      recordParams->E.A.every(((name, input)) => {
         switch map->Belt.Map.String.get(name) {
         | Some(v) => matchWithValue(input, v)
         | None => false
@@ -102,7 +103,7 @@ module FRType = {
     if !isSameLength {
       false
     } else {
-      E.A.zip(inputs, args)->Belt.Array.every(((input, arg)) => matchWithValue(input, arg))
+      E.A.zip(inputs, args)->E.A.every(((input, arg)) => matchWithValue(input, arg))
     }
   }
 }
@@ -111,7 +112,7 @@ module FnDefinition = {
   type t = fnDefinition
 
   let toString = (t: t) => {
-    let inputs = t.inputs->E.A2.fmap(FRType.toString)->E.A2.joinWith(", ")
+    let inputs = t.inputs->E.A.fmap(FRType.toString)->E.A.joinWith(", ")
     t.name ++ `(${inputs})`
   }
 
@@ -122,19 +123,19 @@ module FnDefinition = {
   let run = (
     t: t,
     args: array<Reducer_T.value>,
-    env: Reducer_T.environment,
+    context: Reducer_T.context,
     reducer: Reducer_T.reducerFn,
   ) => {
     switch t->isMatch(args) {
-    | true => t.run(args, env, reducer)
+    | true => t.run(args, context, reducer)
     | false => REOther("Incorrect Types")->Error
     }
   }
 
   let make = (~name, ~inputs, ~run, ()): t => {
-    name: name,
-    inputs: inputs,
-    run: run,
+    name,
+    inputs,
+    run,
   }
 }
 
@@ -160,19 +161,19 @@ module Function = {
     ~isExperimental=false,
     (),
   ): t => {
-    name: name,
-    nameSpace: nameSpace,
-    definitions: definitions,
-    output: output,
-    examples: examples |> E.O.default([]),
-    isExperimental: isExperimental,
-    requiresNamespace: requiresNamespace,
-    description: description,
+    name,
+    nameSpace,
+    definitions,
+    output,
+    examples: examples->E.O.default([]),
+    isExperimental,
+    requiresNamespace,
+    description,
   }
 
   let toJson = (t: t): functionJson => {
     name: t.name,
-    definitions: t.definitions->E.A2.fmap(FnDefinition.toString),
+    definitions: t.definitions->E.A.fmap(FnDefinition.toString),
     examples: t.examples,
     description: t.description,
     isExperimental: t.isExperimental,
@@ -183,10 +184,10 @@ module Registry = {
   type fnNameDict = Belt.Map.String.t<array<fnDefinition>>
   type registry = {functions: array<function>, fnNameDict: fnNameDict}
 
-  let toJson = (r: registry) => r.functions->E.A2.fmap(Function.toJson)
-  let allExamples = (r: registry) => r.functions->E.A2.fmap(r => r.examples)->E.A.concatMany
+  let toJson = (r: registry) => r.functions->E.A.fmap(Function.toJson)
+  let allExamples = (r: registry) => r.functions->E.A.fmap(r => r.examples)->E.A.concatMany
   let allExamplesWithFns = (r: registry) =>
-    r.functions->E.A2.fmap(fn => fn.examples->E.A2.fmap(example => (fn, example)))->E.A.concatMany
+    r.functions->E.A.fmap(fn => fn.examples->E.A.fmap(example => (fn, example)))->E.A.concatMany
 
   let allNames = (r: registry) => r.fnNameDict->Belt.Map.String.keysToArray
 
@@ -195,23 +196,27 @@ module Registry = {
     // 1. functions
     // 2. definitions of each function
     // 3. name variations of each definition
-    r->Belt.Array.reduce(Belt.Map.String.empty, (acc, fn) =>
-      fn.definitions->Belt.Array.reduce(acc, (acc, def) => {
+    r->E.A.reduce(Belt.Map.String.empty, (acc, fn) =>
+      fn.definitions->E.A.reduce(acc, (acc, def) => {
         let names =
           [
             fn.nameSpace == "" ? [] : [`${fn.nameSpace}.${def.name}`],
             fn.requiresNamespace ? [] : [def.name],
           ]->E.A.concatMany
 
-        names->Belt.Array.reduce(acc, (acc, name) => {
-          switch acc->Belt.Map.String.get(name) {
-          | Some(fns) => {
-              let _ = fns->Js.Array2.push(def) // mutates the array, no need to update acc
-              acc
+        names->E.A.reduce(
+          acc,
+          (acc, name) => {
+            switch acc->Belt.Map.String.get(name) {
+            | Some(fns) => {
+                let _ = fns->Js.Array2.push(def) // mutates the array, no need to update acc
+                acc
+              }
+
+            | None => acc->Belt.Map.String.set(name, [def])
             }
-          | None => acc->Belt.Map.String.set(name, [def])
-          }
-        })
+          },
+        )
       })
     )
   }
@@ -225,26 +230,27 @@ module Registry = {
     registry,
     fnName: string,
     args: array<Reducer_T.value>,
-    env: Reducer_T.environment,
+    context: Reducer_T.context,
     reducer: Reducer_T.reducerFn,
-  ): result<Reducer_T.value, errorValue> => {
+  ): result<Reducer_T.value, errorMessage> => {
     switch Belt.Map.String.get(registry.fnNameDict, fnName) {
     | Some(definitions) => {
         let showNameMatchDefinitions = () => {
           let defsString =
             definitions
-            ->E.A2.fmap(FnDefinition.toString)
-            ->E.A2.fmap(r => `[${r}]`)
-            ->E.A2.joinWith("; ")
+            ->E.A.fmap(FnDefinition.toString)
+            ->E.A.fmap(r => `[${r}]`)
+            ->E.A.joinWith("; ")
           `There are function matches for ${fnName}(), but with different arguments: ${defsString}`
         }
 
         let match = definitions->Js.Array2.find(def => def->FnDefinition.isMatch(args))
         switch match {
-        | Some(def) => def->FnDefinition.run(args, env, reducer)
+        | Some(def) => def->FnDefinition.run(args, context, reducer)
         | None => REOther(showNameMatchDefinitions())->Error
         }
       }
+
     | None => RESymbolNotFound(fnName)->Error
     }
   }

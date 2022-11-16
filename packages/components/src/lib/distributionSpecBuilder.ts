@@ -1,22 +1,28 @@
 import { VisualizationSpec } from "react-vega";
+import * as yup from "yup";
 import type { LogScale, LinearScale, PowScale, TimeScale } from "vega";
 
-export type DistributionChartSpecOptions = {
-  /** Set the x scale to be logarithmic by deault */
-  logX: boolean;
-  /** Set the y scale to be exponential by deault */
-  expY: boolean;
-  /** The minimum x coordinate shown on the chart */
-  minX?: number;
-  /** The maximum x coordinate shown on the chart */
-  maxX?: number;
-  /** The title of the chart */
-  title?: string;
-  /** The formatting of the ticks */
-  format?: string;
-  /** Whether the x-axis should be dates or numbers */
-  xAxisType?: "number" | "dateTime";
-};
+export const defaultTickFormat = ".9~s";
+
+export const distributionChartSpecSchema = yup.object({}).shape({
+  /** Set the x scale to be logarithmic */
+  logX: yup.boolean().required().default(false),
+  /** Set the y scale to be exponential */
+  expY: yup.boolean().required().default(false),
+  minX: yup.number(),
+  maxX: yup.number(),
+  title: yup.string(),
+  xAxisType: yup
+    .mixed<"number" | "dateTime">()
+    .oneOf(["number", "dateTime"])
+    .default("number"),
+  /** Documented here: https://github.com/d3/d3-format */
+  tickFormat: yup.string().required().default(defaultTickFormat),
+});
+
+export type DistributionChartSpecOptions = yup.InferType<
+  typeof distributionChartSpecSchema
+>;
 
 /** X Scales */
 export const linearXScale: LinearScale = {
@@ -26,7 +32,6 @@ export const linearXScale: LinearScale = {
   range: "width",
   zero: false,
   nice: false,
-  domain: { data: "domain", field: "x" },
 };
 
 export const logXScale: LogScale = {
@@ -37,7 +42,6 @@ export const logXScale: LogScale = {
   base: 10,
   nice: false,
   clamp: true,
-  domain: { data: "domain", field: "x" },
 };
 
 export const timeXScale: TimeScale = {
@@ -46,7 +50,6 @@ export const timeXScale: TimeScale = {
   type: "time",
   range: "width",
   nice: false,
-  domain: { data: "domain", field: "x" },
 };
 
 /** Y Scales */
@@ -55,7 +58,6 @@ export const linearYScale: LinearScale = {
   type: "linear",
   range: "height",
   zero: true,
-  domain: { data: "domain", field: "y" },
 };
 
 export const expYScale: PowScale = {
@@ -65,36 +67,36 @@ export const expYScale: PowScale = {
   range: "height",
   zero: true,
   nice: false,
-  domain: { data: "domain", field: "y" },
 };
 
-export const defaultTickFormat = ".9~s";
 export const timeTickFormat = "%b %d, %Y %H:%M";
 const width = 500;
 
 export function buildVegaSpec(
-  specOptions: DistributionChartSpecOptions
+  specOptions: DistributionChartSpecOptions & { maxY: number }
 ): VisualizationSpec {
-  const { title, minX, maxX, logX, expY, xAxisType = "number" } = specOptions;
+  const { title, minX, maxX, logX, expY, xAxisType, maxY } = specOptions;
 
   const dateTime = xAxisType === "dateTime";
 
   // some fallbacks
-  const format = specOptions?.format
-    ? specOptions.format
+  const format = specOptions?.tickFormat
+    ? specOptions.tickFormat
     : dateTime
     ? timeTickFormat
     : defaultTickFormat;
 
   let xScale = dateTime ? timeXScale : logX ? logXScale : linearXScale;
 
-  if (minX !== undefined && Number.isFinite(minX)) {
-    xScale = { ...xScale, domainMin: minX };
-  }
+  xScale = {
+    ...xScale,
+    domain: [minX ?? 0, maxX ?? 1],
+    domainMin: minX,
+    domainMax: maxX,
+  };
 
-  if (maxX !== undefined && Number.isFinite(maxX)) {
-    xScale = { ...xScale, domainMax: maxX };
-  }
+  let yScale = expY ? expYScale : linearYScale;
+  yScale = { ...yScale, domain: [0, maxY ?? 1], domainMin: 0, domainMax: maxY };
 
   const spec: VisualizationSpec = {
     $schema: "https://vega.github.io/schema/vega/v5.json",
@@ -128,7 +130,7 @@ export function buildVegaSpec(
     ],
     scales: [
       xScale,
-      expY ? expYScale : linearYScale,
+      yScale,
       {
         name: "color",
         type: "ordinal",
@@ -144,9 +146,9 @@ export function buildVegaSpec(
         orient: "bottom",
         scale: "xscale",
         labelColor: "#727d93",
-        tickColor: "#fff",
-        tickOpacity: 0.0,
-        domainColor: "#fff",
+        labelFlush: true,
+        tickSize: 2,
+        domainColor: "#727d93",
         domainOpacity: 0.0,
         format: format,
         tickCount: dateTime ? 3 : 10,
@@ -313,10 +315,9 @@ export function buildVegaSpec(
         interactive: false,
         encode: {
           enter: {
-            x: { signal: String(width), offset: 1 }, // vega would prefer its internal ` "width" ` variable, but that breaks the squiggle playground. Just setting it to the same var as used elsewhere in the spec achieves the same result.
             fill: { value: "black" },
-            fontSize: { value: 20 },
-            align: { value: "right" },
+            fontSize: { value: 16 },
+            align: { value: "left" },
           },
           update: {
             text: {

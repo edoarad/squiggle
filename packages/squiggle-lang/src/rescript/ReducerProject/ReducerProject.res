@@ -1,7 +1,6 @@
 // TODO: Auto clean project based on topology
 
 module Bindings = Reducer_Bindings
-module ErrorValue = Reducer_ErrorValue
 module ProjectItem = ReducerProject_ProjectItem
 module T = ReducerProject_T
 module Topology = ReducerProject_Topology
@@ -36,7 +35,7 @@ let rec touchSource_ = (project: t, sourceId: string): unit => {
   project->setItem(sourceId, newItem)
 }
 and touchDependents = (project: t, sourceId: string): unit => {
-  let _ = getDependents(project, sourceId)->Belt.Array.forEach(_, touchSource_(project, _))
+  let _ = getDependents(project, sourceId)->E.A.forEach(_, touchSource_(project, _))
 }
 
 let touchSource = (project: t, sourceId: string): unit => {
@@ -48,7 +47,7 @@ let handleNewTopology = (project: t): unit => {
   let previousRunOrder = project.previousRunOrder
   let currentRunOrder = Topology.getRunOrder(project)
   let diff = Topology.runOrderDiff(currentRunOrder, previousRunOrder)
-  Belt.Array.forEach(diff, touchSource(project, _))
+  E.A.forEach(diff, touchSource(project, _))
   project.previousRunOrder = currentRunOrder
 }
 
@@ -61,13 +60,17 @@ let setSource = (project: t, sourceId: string, value: string): unit => {
   touchDependents(project, sourceId)
 }
 
+let removeSource = (project: t, sourceId: string): unit => {
+  Belt.MutableMap.String.remove(project.items, sourceId)
+}
+
 let clean = (project: t, sourceId: string): unit => {
   let newItem = project->getItem(sourceId)->ProjectItem.clean
   project->setItem(sourceId, newItem)
 }
 
 let cleanAll = (project: t): unit =>
-  project->getSourceIds->Belt.Array.forEach(sourceId => clean(project, sourceId))
+  project->getSourceIds->E.A.forEach(sourceId => clean(project, sourceId))
 
 let cleanResults = (project: t, sourceId: string): unit => {
   let newItem = project->getItem(sourceId)->ProjectItem.cleanResults
@@ -75,7 +78,7 @@ let cleanResults = (project: t, sourceId: string): unit => {
 }
 
 let cleanAllResults = (project: t): unit =>
-  project->getSourceIds->Belt.Array.forEach(sourceId => project->cleanResults(sourceId))
+  project->getSourceIds->E.A.forEach(sourceId => project->cleanResults(sourceId))
 
 let getIncludes = (project: t, sourceId: string): ProjectItem.T.includesType =>
   project->getItem(sourceId)->ProjectItem.getIncludes
@@ -117,7 +120,7 @@ let getResultOption = (project: t, sourceId: string): ProjectItem.T.resultType =
 
 let getResult = (project: t, sourceId: string): ProjectItem.T.resultArgumentType =>
   switch getResultOption(project, sourceId) {
-  | None => RENeedToRun->Error
+  | None => RENeedToRun->SqError.fromMessage->Error
   | Some(result) => result
   }
 
@@ -156,22 +159,22 @@ let getBindingsAsRecord = (project: t, sourceId: string): Reducer_T.value => {
 }
 
 let getContinuationsBefore = (project: t, sourceId: string): array<Reducer_T.namespace> => {
-  project->getPastChain(sourceId)->Belt.Array.map(project->getBindings)
+  project->getPastChain(sourceId)->E.A.fmap(project->getBindings)
 }
 
 let linkDependencies = (project: t, sourceId: string): Reducer_T.namespace => {
   let pastChain = project->getPastChain(sourceId)
   let namespace = Reducer_Namespace.mergeMany(
-    Belt.Array.concatMany([
+    E.A.concatMany([
       [project->getStdLib],
-      pastChain->Belt.Array.map(project->getBindings),
-      pastChain->Belt.Array.map(id =>
+      pastChain->E.A.fmap(project->getBindings),
+      pastChain->E.A.fmap(id =>
         Reducer_Namespace.fromArray([
           (
             "__result__",
             switch project->getResult(id) {
             | Ok(result) => result
-            | Error(error) => error->Reducer_ErrorValue.ErrorException->raise
+            | Error(error) => error->SqError.throw
             },
           ),
         ])
@@ -180,7 +183,7 @@ let linkDependencies = (project: t, sourceId: string): Reducer_T.namespace => {
   )
 
   let includesAsVariables = project->getIncludesAsVariables(sourceId)
-  Belt.Array.reduce(includesAsVariables, namespace, (acc, (variable, includeFile)) =>
+  E.A.reduce(includesAsVariables, namespace, (acc, (variable, includeFile)) =>
     acc->Reducer_Namespace.set(
       variable,
       project->getBindings(includeFile)->Reducer_Namespace.toRecord,
@@ -213,6 +216,7 @@ let tryRunWithResult = (
         project->setResult(sourceId, Error(error))
         Error(error)
       }
+
     | Ok(_prevResult) => {
         project->doLinkAndRun(sourceId)
         project->getResultOption(sourceId)->Belt.Option.getWithDefault(rPrevResult)
@@ -224,7 +228,7 @@ let tryRunWithResult = (
 let runAll = (project: t): unit => {
   let runOrder = Topology.getRunOrder(project)
   let initialState = Ok(Reducer_T.IEvVoid)
-  let _finalState = Belt.Array.reduce(runOrder, initialState, (currState, currId) =>
+  let _finalState = E.A.reduce(runOrder, initialState, (currState, currId) =>
     project->tryRunWithResult(currId, currState)
   )
 }
@@ -232,7 +236,7 @@ let runAll = (project: t): unit => {
 let run = (project: t, sourceId: string): unit => {
   let runOrder = Topology.getRunOrderFor(project, sourceId)
   let initialState = Ok(Reducer_T.IEvVoid)
-  let _finalState = Belt.Array.reduce(runOrder, initialState, (currState, currId) =>
+  let _finalState = E.A.reduce(runOrder, initialState, (currState, currId) =>
     project->tryRunWithResult(currId, currState)
   )
 }

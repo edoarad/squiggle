@@ -75,7 +75,7 @@ module Old = {
       }
 
     let parseNumberArray = (ags: array<Reducer_T.value>): Belt.Result.t<array<float>, string> =>
-      E.A.fmap(parseNumber, ags) |> E.A.R.firstErrorOrOpen
+      E.A.fmap(ags, parseNumber)->E.A.R.firstErrorOrOpen
 
     let parseDist = (args: Reducer_T.value): Belt.Result.t<DistributionTypes.genericDist, string> =>
       switch args {
@@ -87,7 +87,7 @@ module Old = {
     let parseDistributionArray = (ags: array<Reducer_T.value>): Belt.Result.t<
       array<DistributionTypes.genericDist>,
       string,
-    > => E.A.fmap(parseDist, ags) |> E.A.R.firstErrorOrOpen
+    > => E.A.fmap(ags, parseDist)->E.A.R.firstErrorOrOpen
 
     let mixtureWithGivenWeights = (
       distributions: array<DistributionTypes.genericDist>,
@@ -95,7 +95,7 @@ module Old = {
       ~env: GenericDist.env,
     ): DistributionOperation.outputType =>
       E.A.length(distributions) == E.A.length(weights)
-        ? Mixture(Belt.Array.zip(distributions, weights))->DistributionOperation.run(~env)
+        ? Mixture(E.A.zip(distributions, weights))->DistributionOperation.run(~env)
         : GenDistError(
             ArgumentError("Error, mixture call has different number of distributions and weights"),
           )
@@ -133,13 +133,14 @@ module Old = {
         | Some(IEvArray(b)) => {
             let weights = parseNumberArray(b)
             let distributions = parseDistributionArray(
-              Belt.Array.slice(args, ~offset=0, ~len=E.A.length(args) - 1),
+              E.A.slice(args, ~offset=0, ~len=E.A.length(args) - 1),
             )
             switch E.R.merge(distributions, weights) {
             | Ok(d, w) => mixtureWithGivenWeights(d, w, ~env)
             | Error(err) => error(err)
             }
           }
+
         | Some(IEvNumber(_))
         | Some(IEvDistribution(_)) =>
           switch parseDistributionArray(args) {
@@ -192,6 +193,7 @@ module Old = {
         }
         Helpers.toFloatFn(fn, dist, ~env)
       }
+
     | ("integralSum", [IEvDistribution(dist)]) => Helpers.toFloatFn(#IntegralSum, dist, ~env)
     | ("toString", [IEvDistribution(dist)]) => Helpers.toStringFn(ToString, dist, ~env)
     | ("sparkline", [IEvDistribution(dist)]) =>
@@ -268,7 +270,7 @@ module Old = {
         ("add" | "multiply" | "subtract" | "divide" | "pow" | "log") as arithmetic,
         [_, _] as args,
       ) =>
-      Helpers.catchAndConvertTwoArgsToDists(args)->E.O2.fmap(((fst, snd)) =>
+      Helpers.catchAndConvertTwoArgsToDists(args)->E.O.fmap(((fst, snd)) =>
         Helpers.twoDiststoDistFn(Algebraic(AsDefault), arithmetic, fst, snd, ~env)
       )
     | (
@@ -279,7 +281,7 @@ module Old = {
         | "dotPow") as arithmetic,
         [_, _] as args,
       ) =>
-      Helpers.catchAndConvertTwoArgsToDists(args)->E.O2.fmap(((fst, snd)) =>
+      Helpers.catchAndConvertTwoArgsToDists(args)->E.O.fmap(((fst, snd)) =>
         Helpers.twoDiststoDistFn(Pointwise, arithmetic, fst, snd, ~env)
       )
     | ("dotExp", [IEvDistribution(a)]) =>
@@ -296,14 +298,14 @@ module Old = {
 
   let genericOutputToReducerValue = (o: DistributionOperation.outputType): result<
     Reducer_T.value,
-    Reducer_ErrorValue.errorValue,
+    SqError.Message.t,
   > =>
     switch o {
     | Dist(d) => Ok(Reducer_T.IEvDistribution(d))
     | Float(d) => Ok(IEvNumber(d))
     | String(d) => Ok(IEvString(d))
     | Bool(d) => Ok(IEvBool(d))
-    | FloatArray(d) => Ok(IEvArray(d |> E.A.fmap(r => Reducer_T.IEvNumber(r))))
+    | FloatArray(d) => Ok(IEvArray(d->E.A.fmap(r => Reducer_T.IEvNumber(r))))
     | GenDistError(err) => Error(REDistributionError(err))
     }
 
@@ -311,9 +313,9 @@ module Old = {
     switch dispatchToGenericOutput(call, environment) {
     | Some(o) => genericOutputToReducerValue(o)
     | None =>
-      Reducer_ErrorValue.REOther("Internal error in FR_GenericDist implementation")
-      ->Reducer_ErrorValue.ErrorException
-      ->raise
+      SqError.Message.REOther(
+        "Internal error in FR_GenericDist implementation",
+      )->SqError.Message.throw
     }
 }
 
@@ -326,7 +328,7 @@ let makeProxyFn = (name: string, inputs: array<frType>) => {
       FnDefinition.make(
         ~name,
         ~inputs,
-        ~run=(inputs, env, _) => Old.dispatch((name, inputs), env),
+        ~run=(inputs, context, _) => Old.dispatch((name, inputs), context.environment),
         (),
       ),
     ],
@@ -355,7 +357,7 @@ let makeOperationFns = (): array<function> => {
     [FRTypeDist, FRTypeDist],
   ]
 
-  ops->E.A2.fmap(op => twoArgTypes->E.A2.fmap(types => makeProxyFn(op, types)))->E.A.concatMany
+  ops->E.A.fmap(op => twoArgTypes->E.A.fmap(types => makeProxyFn(op, types)))->E.A.concatMany
 }
 
 // TODO - duplicates the switch above, should rewrite with standard FR APIs
@@ -402,9 +404,9 @@ let library = E.A.concatMany([
 ])
 
 // FIXME - impossible to implement with FR due to arbitrary parameters length;
-let mxLambda = Reducer_Expression_Lambda.makeFFILambda((inputs, env, _) => {
-  switch Old.dispatch(("mx", inputs), env) {
+let mxLambda = Reducer_Lambda.makeFFILambda("mx", (inputs, context, _) => {
+  switch Old.dispatch(("mx", inputs), context.environment) {
   | Ok(value) => value
-  | Error(e) => e->Reducer_ErrorValue.ErrorException->raise
+  | Error(e) => e->SqError.Message.throw
   }
 })

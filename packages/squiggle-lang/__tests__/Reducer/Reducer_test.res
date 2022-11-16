@@ -33,18 +33,21 @@ describe("eval", () => {
     testDescriptionEvalToBe("index not found", "([0,1,2])[10]", "Error(Array index not found: 10)")
   })
   describe("records", () => {
+    test("empty", () => expectEvalToBe("{}", "Ok({})"))
     test("define", () => expectEvalToBe("{a: 1, b: 2}", "Ok({a: 1,b: 2})"))
     test("index", () => expectEvalToBe("r = {a: 1}; r.a", "Ok(1)"))
     test("index", () => expectEvalToBe("r = {a: 1}; r.b", "Error(Record property not found: b)"))
     testEvalError("{a: 1}.b") // invalid syntax
-    test("always the same property ending", () =>
-      expectEvalToBe(
-        `{
+    test(
+      "always the same property ending",
+      () =>
+        expectEvalToBe(
+          `{
       a: 1, 
       b: 2,
     }`,
-        "Ok({a: 1,b: 2})",
-      )
+          "Ok({a: 1,b: 2})",
+        ),
     )
   })
 
@@ -64,17 +67,61 @@ describe("eval", () => {
   describe("blocks", () => {
     testEvalToBe("x = { y = { z = 5; z * 2 }; y + 3 }; x", "Ok(13)")
   })
+
+  describe("chain call", () => {
+   describe("to function", () => {
+    testEvalToBe("f(x)=x; 1->f", "Ok(1)")
+    testEvalToBe("f(x,y)=x+y; 1->f(2)", "Ok(3)")
+   })
+   describe("to block", () => {
+    testEvalToBe("1->{|x| x}", "Ok(1)")
+    testEvalToBe("6->{|x,y| x/y}(2)", "Ok(3)")
+   })
+   describe("to expression", () => {
+    testEvalToBe("1->{f:{|x|x+2}}.f", "Ok(3)")
+    testEvalToBe("1->{f:{|x|x+2}}['f']", "Ok(3)")
+   })
+  })
 })
 
 describe("test exceptions", () => {
   testDescriptionEvalToBe(
     "javascript exception",
     "javascriptraise('div by 0')",
-    "Error(Error: 'div by 0')",
+    "Error(JS Exception: Error: 'div by 0')",
   )
   // testDescriptionEvalToBe(
   //   "rescript exception",
   //   "rescriptraise()",
   //   "Error(TODO: unhandled rescript exception)",
   // )
+})
+
+describe("stacktraces", () => {
+  test("nested calls", () => {
+    open Expect
+
+    let error =
+      Expression.BackCompatible.evaluateString(`
+  f(x) = {
+    y = "a"
+    x + y
+  }
+  g = {|x| f(x)}
+  h(x) = g(x)
+  h(5)
+`)
+      ->E.R.getError
+      ->E.O.toExn("oops")
+      ->SqError.toStringWithStackTrace
+
+    expect(
+      error,
+    )->toBe(`Error: There are function matches for add(), but with different arguments: [add(number, number)]; [add(distribution, number)]; [add(number, distribution)]; [add(distribution, distribution)]; [add(date, duration)]; [add(duration, duration)]
+Stack trace:
+  f at line 4, column 5
+  g at line 6, column 12
+  h at line 7, column 10
+  <top> at line 8, column 3`)
+  })
 })

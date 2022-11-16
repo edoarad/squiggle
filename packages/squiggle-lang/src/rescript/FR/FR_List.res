@@ -5,19 +5,23 @@ let nameSpace = "List"
 let requiresNamespace = true
 
 module Internals = {
+  let length = (v: array<Reducer_T.value>): Reducer_T.value => IEvNumber(
+    Belt.Int.toFloat(E.A.length(v)),
+  )
+
   let makeFromNumber = (n: float, value: Reducer_T.value): Reducer_T.value => IEvArray(
     Belt.Array.make(E.Float.toInt(n), value),
   )
 
   let upTo = (low: float, high: float): Reducer_T.value => IEvArray(
-    E.A.Floats.range(low, high, (high -. low +. 1.0)->E.Float.toInt)->E.A2.fmap(Wrappers.evNumber),
+    E.A.Floats.range(low, high, (high -. low +. 1.0)->E.Float.toInt)->E.A.fmap(Wrappers.evNumber),
   )
 
   let first = (v: array<Reducer_T.value>): result<Reducer_T.value, string> =>
-    v->E.A.first |> E.O.toResult("No first element")
+    v->E.A.first->E.O.toResult("No first element")
 
   let last = (v: array<Reducer_T.value>): result<Reducer_T.value, string> =>
-    v->E.A.last |> E.O.toResult("No last element")
+    v->E.A.last->E.O.toResult("No last element")
 
   let reverse = (array: array<Reducer_T.value>): Reducer_T.value => IEvArray(
     Belt.Array.reverse(array),
@@ -26,11 +30,11 @@ module Internals = {
   let map = (
     array: array<Reducer_T.value>,
     eLambdaValue,
-    env: Reducer_T.environment,
+    context: Reducer_T.context,
     reducer: Reducer_T.reducerFn,
   ): Reducer_T.value => {
-    Belt.Array.map(array, elem =>
-      Reducer_Expression_Lambda.doLambdaCall(eLambdaValue, [elem], env, reducer)
+    E.A.fmap(array, elem =>
+      Reducer_Lambda.doLambdaCall(eLambdaValue, [elem], context, reducer)
     )->Wrappers.evArray
   }
 
@@ -38,11 +42,11 @@ module Internals = {
     aValueArray,
     initialValue,
     aLambdaValue,
-    env: Reducer_T.environment,
+    context: Reducer_T.context,
     reducer: Reducer_T.reducerFn,
   ) => {
     aValueArray->E.A.reduce(initialValue, (acc, elem) =>
-      Reducer_Expression_Lambda.doLambdaCall(aLambdaValue, [acc, elem], env, reducer)
+      Reducer_Lambda.doLambdaCall(aLambdaValue, [acc, elem], context, reducer)
     )
   }
 
@@ -50,22 +54,22 @@ module Internals = {
     aValueArray,
     initialValue,
     aLambdaValue,
-    env: Reducer_T.environment,
+    context: Reducer_T.context,
     reducer: Reducer_T.reducerFn,
   ) => {
-    aValueArray->Belt.Array.reduceReverse(initialValue, (acc, elem) =>
-      Reducer_Expression_Lambda.doLambdaCall(aLambdaValue, [acc, elem], env, reducer)
+    aValueArray->E.A.reduceReverse(initialValue, (acc, elem) =>
+      Reducer_Lambda.doLambdaCall(aLambdaValue, [acc, elem], context, reducer)
     )
   }
 
   let filter = (
     aValueArray,
     aLambdaValue,
-    env: Reducer_T.environment,
+    context: Reducer_T.context,
     reducer: Reducer_T.reducerFn,
   ) => {
     Js.Array2.filter(aValueArray, elem => {
-      let result = Reducer_Expression_Lambda.doLambdaCall(aLambdaValue, [elem], env, reducer)
+      let result = Reducer_Lambda.doLambdaCall(aLambdaValue, [elem], context, reducer)
       switch result {
       | IEvBool(true) => true
       | _ => false
@@ -75,6 +79,26 @@ module Internals = {
 }
 
 let library = [
+  Function.make(
+    ~name="length",
+    ~nameSpace,
+    ~output=EvtNumber,
+    ~requiresNamespace=true,
+    ~examples=[`List.length([1,4,5])`],
+    ~definitions=[
+      FnDefinition.make(
+        ~name="length",
+        ~inputs=[FRTypeArray(FRTypeAny)],
+        ~run=(inputs, _, _) =>
+          switch inputs {
+          | [IEvArray(array)] => Internals.length(array)->Ok
+          | _ => Error(impossibleError)
+          },
+        (),
+      ),
+    ],
+    (),
+  ),
   Function.make(
     ~name="make",
     ~nameSpace,
@@ -128,7 +152,7 @@ let library = [
         ~inputs=[FRTypeArray(FRTypeAny)],
         ~run=(inputs, _, _) =>
           switch inputs {
-          | [IEvArray(array)] => Internals.first(array)->E.R2.errMap(wrapError)
+          | [IEvArray(array)] => Internals.first(array)->E.R.errMap(wrapError)
           | _ => Error(impossibleError)
           },
         (),
@@ -147,7 +171,7 @@ let library = [
         ~inputs=[FRTypeArray(FRTypeAny)],
         ~run=(inputs, _, _) =>
           switch inputs {
-          | [IEvArray(array)] => Internals.last(array)->E.R2.errMap(wrapError)
+          | [IEvArray(array)] => Internals.last(array)->E.R.errMap(wrapError)
           | _ => Error(impossibleError)
           },
         (),
@@ -185,9 +209,10 @@ let library = [
       FnDefinition.make(
         ~name="map",
         ~inputs=[FRTypeArray(FRTypeAny), FRTypeLambda],
-        ~run=(inputs, env, reducer) =>
+        ~run=(inputs, context, reducer) =>
           switch inputs {
-          | [IEvArray(array), IEvLambda(lambda)] => Ok(Internals.map(array, lambda, env, reducer))
+          | [IEvArray(array), IEvLambda(lambda)] =>
+            Ok(Internals.map(array, lambda, context, reducer))
           | _ => Error(impossibleError)
           },
         (),
@@ -204,10 +229,10 @@ let library = [
       FnDefinition.make(
         ~name="reduce",
         ~inputs=[FRTypeArray(FRTypeAny), FRTypeAny, FRTypeLambda],
-        ~run=(inputs, env, reducer) =>
+        ~run=(inputs, context, reducer) =>
           switch inputs {
           | [IEvArray(array), initialValue, IEvLambda(lambda)] =>
-            Ok(Internals.reduce(array, initialValue, lambda, env, reducer))
+            Ok(Internals.reduce(array, initialValue, lambda, context, reducer))
           | _ => Error(impossibleError)
           },
         (),
@@ -224,10 +249,10 @@ let library = [
       FnDefinition.make(
         ~name="reduceReverse",
         ~inputs=[FRTypeArray(FRTypeAny), FRTypeAny, FRTypeLambda],
-        ~run=(inputs, env, reducer) =>
+        ~run=(inputs, context, reducer) =>
           switch inputs {
           | [IEvArray(array), initialValue, IEvLambda(lambda)] =>
-            Ok(Internals.reduceReverse(array, initialValue, lambda, env, reducer))
+            Ok(Internals.reduceReverse(array, initialValue, lambda, context, reducer))
           | _ => Error(impossibleError)
           },
         (),
@@ -244,10 +269,10 @@ let library = [
       FnDefinition.make(
         ~name="filter",
         ~inputs=[FRTypeArray(FRTypeAny), FRTypeLambda],
-        ~run=(inputs, env, reducer) =>
+        ~run=(inputs, context, reducer) =>
           switch inputs {
           | [IEvArray(array), IEvLambda(lambda)] =>
-            Ok(Internals.filter(array, lambda, env, reducer))
+            Ok(Internals.filter(array, lambda, context, reducer))
           | _ => Error(impossibleError)
           },
         (),

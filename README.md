@@ -51,7 +51,25 @@ For any project in the repo, begin by running `yarn` in the top level
 yarn
 ```
 
-See `packages/*/README.md` to work with whatever project you're interested in.
+Then use `turbo` to build the specific packages or the entire monorepo:
+
+```sh
+turbo run build
+```
+
+Or:
+
+```sh
+turbo run build --filter=@quri/squiggle-components
+```
+
+You can also run specific npm scripts for the package you're working on. See `packages/*/README.md` for the details.
+
+# NixOS users
+
+This repository requires the use of bundled binaries from node_modules, which
+are not linked statically. The easiest way to get them working is to enable
+[nix-ld](https://github.com/Mic92/nix-ld).
 
 # Contributing
 

@@ -75,29 +75,32 @@ describe("Peggy to Expression", () => {
     testToExpression("false ? 1 : 0", "false ? (1) : (0)", ~v="0", ())
     testToExpression("true ? 1 : false ? 2 : 0", "true ? (1) : (false ? (2) : (0))", ~v="1", ()) // nested ternary
     testToExpression("false ? 1 : false ? 2 : 0", "false ? (1) : (false ? (2) : (0))", ~v="0", ()) // nested ternary
-    describe("ternary bindings", () => {
-      testToExpression(
-        // expression binding
-        "f(a) = a > 5 ? 1 : 0; f(6)",
-        "f = {|a| {(larger)(a, 5) ? (1) : (0)}}; (f)(6)",
-        ~v="1",
-        (),
-      )
-      testToExpression(
-        // when true binding
-        "f(a) = a > 5 ? a : 0; f(6)",
-        "f = {|a| {(larger)(a, 5) ? (a) : (0)}}; (f)(6)",
-        ~v="6",
-        (),
-      )
-      testToExpression(
-        // when false binding
-        "f(a) = a < 5 ? 1 : a; f(6)",
-        "f = {|a| {(smaller)(a, 5) ? (1) : (a)}}; (f)(6)",
-        ~v="6",
-        (),
-      )
-    })
+    describe(
+      "ternary bindings",
+      () => {
+        testToExpression(
+          // expression binding
+          "f(a) = a > 5 ? 1 : 0; f(6)",
+          "f = {|a| {(larger)(a, 5) ? (1) : (0)}}; (f)(6)",
+          ~v="1",
+          (),
+        )
+        testToExpression(
+          // when true binding
+          "f(a) = a > 5 ? a : 0; f(6)",
+          "f = {|a| {(larger)(a, 5) ? (a) : (0)}}; (f)(6)",
+          ~v="6",
+          (),
+        )
+        testToExpression(
+          // when false binding
+          "f(a) = a < 5 ? 1 : a; f(6)",
+          "f = {|a| {(smaller)(a, 5) ? (1) : (a)}}; (f)(6)",
+          ~v="6",
+          (),
+        )
+      },
+    )
   })
 
   describe("if then else", () => {
@@ -135,7 +138,7 @@ describe("Peggy to Expression", () => {
 
   describe("lambda", () => {
     testToExpression("{|x| x}", "{|x| x}", ~v="lambda(x=>internal code)", ())
-    testToExpression("f={|x| x}", "f = {{|x| x}}", ())
+    testToExpression("f={|x| x}", "f = {|x| x}", ())
     testToExpression("f(x)=x", "f = {|x| {x}}", ()) // Function definitions are lambda assignments
     testToExpression("f(x)=x ? 1 : 0", "f = {|x| {x ? (1) : (0)}}", ())
   })

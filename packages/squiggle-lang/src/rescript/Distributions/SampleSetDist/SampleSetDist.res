@@ -1,15 +1,19 @@
+module JS = {
+  @genType
+  type distJs = {
+    continuousDist: option<PointSetTypes.xyShape>,
+    discreteDist: PointSetTypes.xyShape,
+  }
+
+  @module("./SampleSetDist_ToPointSet")
+  external toPointSetDist: (array<float>, int, option<float>) => distJs = "toPointSetDist"
+}
+
 @genType
 module Error = {
   @genType
   type sampleSetError =
     TooFewSamples | NonNumericInput(string) | OperationError(Operation.operationError)
-
-  let sampleSetErrorToString = (err: sampleSetError): string =>
-    switch err {
-    | TooFewSamples => "Too few samples when constructing sample set"
-    | NonNumericInput(err) => `Found a non-number in input: ${err}`
-    | OperationError(err) => Operation.Error.toString(err)
-    }
 
   @genType
   type pointsetConversionError = TooFewSamplesForConversionToPointSet
@@ -66,16 +70,22 @@ some refactoring.
 let toPointSetDist = (~samples: t, ~samplingInputs: SamplingInputs.samplingInputs): result<
   PointSetTypes.pointSetDist,
   pointsetConversionError,
-> =>
-  SampleSetDist_ToPointSet.toPointSetDist(
-    ~samples=get(samples),
-    ~samplingInputs,
-    (),
-  ).pointSetDist->E.O2.toResult(TooFewSamplesForConversionToPointSet)
+> => {
+  let dists = JS.toPointSetDist(
+    get(samples),
+    samplingInputs.outputXYPoints,
+    samplingInputs.kernelWidth,
+  )
+
+  MixedShapeBuilder.buildSimple(
+    ~continuous=dists.continuousDist->E.O.fmap(Continuous.make),
+    ~discrete=Some(dists.discreteDist->Discrete.make),
+  )->E.O.toResult(TooFewSamplesForConversionToPointSet)
+}
 
 //Randomly get one sample from the distribution
 let sample = (t: t): float => {
-  let i = E.Int.random(~min=0, ~max=E.A.length(get(t)) - 1)
+  let i = Js.Math.random_int(0, E.A.length(get(t)) - 1)
   E.A.unsafe_get(get(t), i)
 }
 
@@ -91,23 +101,23 @@ let sampleN = (t: t, n) => {
   if n <= E.A.length(get(t)) {
     E.A.slice(get(t), ~offset=0, ~len=n)
   } else {
-    Belt.Array.makeBy(n, _ => sample(t))
+    E.A.makeBy(n, _ => sample(t))
   }
 }
 
 let _fromSampleResultArray = (samples: array<result<float, QuriSquiggleLang.Operation.Error.t>>) =>
-  E.A.R.firstErrorOrOpen(samples)->E.R2.errMap(Error.fromOperationError) |> E.R2.bind(make)
+  E.A.R.firstErrorOrOpen(samples)->E.R.errMap(Error.fromOperationError)->E.R.bind(make)
 
 let samplesMap = (~fn: float => result<float, Operation.Error.t>, t: t): result<
   t,
   sampleSetError,
-> => T.get(t)->E.A2.fmap(fn)->_fromSampleResultArray
+> => T.get(t)->E.A.fmap(fn)->_fromSampleResultArray
 
 //TODO: Figure out what to do if distributions are different lengths. ``zip`` is kind of inelegant for this.
 let map2 = (~fn: (float, float) => result<float, Operation.Error.t>, ~t1: t, ~t2: t): result<
   t,
   sampleSetError,
-> => E.A.zip(get(t1), get(t2))->E.A2.fmap(E.Tuple2.toFnCall(fn))->_fromSampleResultArray
+> => E.A.zip(get(t1), get(t2))->E.A.fmap(E.Tuple2.toFnCall(fn))->_fromSampleResultArray
 
 let map3 = (
   ~fn: (float, float, float) => result<float, Operation.Error.t>,
@@ -115,12 +125,12 @@ let map3 = (
   ~t2: t,
   ~t3: t,
 ): result<t, sampleSetError> =>
-  E.A.zip3(get(t1), get(t2), get(t3))->E.A2.fmap(E.Tuple3.toFnCall(fn))->_fromSampleResultArray
+  E.A.zip3(get(t1), get(t2), get(t3))->E.A.fmap(E.Tuple3.toFnCall(fn))->_fromSampleResultArray
 
 let mapN = (~fn: array<float> => result<float, Operation.Error.t>, ~t1: array<t>): result<
   t,
   sampleSetError,
-> => E.A.transpose(E.A.fmap(get, t1))->E.A2.fmap(fn)->_fromSampleResultArray
+> => E.A.transpose(E.A.fmap(t1, get))->E.A.fmap(fn)->_fromSampleResultArray
 
 let mean = t => T.get(t)->E.A.Floats.mean
 let geomean = t => T.get(t)->E.A.Floats.geomean
@@ -137,31 +147,31 @@ let cdf = (t: t, f: float) => {
 }
 
 let mixture = (values: array<(t, float)>, intendedLength: int) => {
-  let totalWeight = values->E.A2.fmap(E.Tuple2.second)->E.A.Floats.sum
+  let totalWeight = values->E.A.fmap(E.Tuple2.second)->E.A.Floats.sum
   let discreteSamples =
     values
-    ->Belt.Array.mapWithIndex((i, (_, weight)) => (E.I.toFloat(i), weight /. totalWeight))
+    ->E.A.fmapi((i, (_, weight)) => (E.I.toFloat(i), weight /. totalWeight))
     ->XYShape.T.fromZippedArray
     ->Discrete.make
     ->Discrete.sampleN(intendedLength)
-  let dists = values->E.A2.fmap(E.Tuple2.first)->E.A2.fmap(T.get)
+  let dists = values->E.A.fmap(E.Tuple2.first)->E.A.fmap(T.get)
   let samples =
     discreteSamples
-    ->Belt.Array.mapWithIndex((index, distIndexToChoose) => {
+    ->E.A.fmapi((index, distIndexToChoose) => {
       let chosenDist = E.A.get(dists, E.Float.toInt(distIndexToChoose))
       chosenDist->E.O.bind(E.A.get(_, index))
     })
     ->E.A.O.openIfAllSome
-  samples->E.O2.toExn("Mixture unreachable error")->T.make
+  samples->E.O.toExn("Mixture unreachable error")->T.make
 }
 
-let truncateLeft = (t, f) => T.get(t)->E.A2.filter(x => x >= f)->T.make
-let truncateRight = (t, f) => T.get(t)->E.A2.filter(x => x <= f)->T.make
+let truncateLeft = (t, f) => T.get(t)->E.A.filter(x => x >= f)->T.make
+let truncateRight = (t, f) => T.get(t)->E.A.filter(x => x <= f)->T.make
 
 let truncate = (t, ~leftCutoff: option<float>, ~rightCutoff: option<float>) => {
-  let withTruncatedLeft = t => leftCutoff |> E.O.dimap(left => truncateLeft(t, left), _ => Ok(t))
-  let withTruncatedRight = t => rightCutoff |> E.O.dimap(left => truncateRight(t, left), _ => Ok(t))
-  t->withTruncatedLeft |> E.R2.bind(withTruncatedRight)
+  let withTruncatedLeft = t => leftCutoff->E.O.dimap(left => truncateLeft(t, left), _ => Ok(t))
+  let withTruncatedRight = t => rightCutoff->E.O.dimap(left => truncateRight(t, left), _ => Ok(t))
+  t->withTruncatedLeft->E.R.bind(withTruncatedRight)
 }
 
 let minOfTwo = (t1: t, t2: t) => map2(~fn=(a, b) => Ok(Js.Math.min_float(a, b)), ~t1, ~t2)

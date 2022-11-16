@@ -16,7 +16,7 @@ describe("ReducerProject Tutorial", () => {
 
   let userValues = [1, 2, 3, 4, 5]
 
-  let userResults = Belt.Array.map(userValues, aUserValue => {
+  let userResults = E.A.fmap(userValues, aUserValue => {
     let userCode = `double(${aUserValue->Js.Int.toString})`
     /* Put the constructed source in the project */
     /* We have already set that it depends on "library" */
@@ -30,8 +30,9 @@ describe("ReducerProject Tutorial", () => {
   })
 
   test("userResults", () => {
-    let userResultsAsString = Belt.Array.map(userResults, aResult =>
-      aResult->Reducer_Value.toStringResult
+    let userResultsAsString = E.A.fmap(
+      userResults,
+      aResult => aResult->Reducer_Value.toStringResult,
     )
     userResultsAsString->expect == ["Ok(2)", "Ok(4)", "Ok(6)", "Ok(8)", "Ok(10)"]
   })

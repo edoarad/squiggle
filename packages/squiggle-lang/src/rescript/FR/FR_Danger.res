@@ -61,23 +61,23 @@ module Integration = {
       min: float,
       max: float,
       numIntegrationPoints: float, // cast as int?
-      environment,
+      context,
       reducer,
     ) => {
       let applyFunctionAtFloatToFloatOption = (point: float) => {
-        // Defined here so that it has access to environment, reducer
+        // Defined here so that it has access to context, reducer
         let pointAsInternalExpression = FunctionRegistry_Helpers.Wrappers.evNumber(point)
-        let resultAsInternalExpression = Reducer_Expression_Lambda.doLambdaCall(
+        let resultAsInternalExpression = Reducer_Lambda.doLambdaCall(
           aLambda,
           [pointAsInternalExpression],
-          environment,
+          context,
           reducer,
         )
         let result = switch resultAsInternalExpression {
         | Reducer_T.IEvNumber(x) => Ok(x)
         | _ =>
           Error(
-            "Error 1 in Danger.integrate. It's possible that your function doesn't return a number, try definining auxiliaryFunction(x) = mean(yourFunction(x)) and integrate auxiliaryFunction instead"->Reducer_ErrorValue.REOther,
+            "Error 1 in Danger.integrate. It's possible that your function doesn't return a number, try definining auxiliaryFunction(x) = mean(yourFunction(x)) and integrate auxiliaryFunction instead"->SqError.Message.REOther,
           )
         }
         result
@@ -90,11 +90,11 @@ module Integration = {
       let weightForAnInnerPoint = totalWeight /. E.I.toFloat(numTotalPoints - 1)
       let weightForAnOuterPoint = totalWeight /. E.I.toFloat(numTotalPoints - 1) /. 2.0
       let innerPointIncrement = (max -. min) /. E.I.toFloat(numTotalPoints - 1)
-      let innerXs = Belt.Array.makeBy(numInnerPoints, i =>
+      let innerXs = E.A.makeBy(numInnerPoints, i =>
         min +. Belt_Float.fromInt(i + 1) *. innerPointIncrement
       )
       // Gotcha: makeBy goes from 0 to (n-1): <https://rescript-lang.org/docs/manual/latest/api/belt/array#makeby>
-      let ysOptions = Belt.Array.map(innerXs, x => applyFunctionAtFloatToFloatOption(x))
+      let ysOptions = E.A.fmap(innerXs, x => applyFunctionAtFloatToFloatOption(x))
 
       /* Logging, with a worked example. */
       // Useful for understanding what is happening.
@@ -135,16 +135,18 @@ module Integration = {
               let wrappedResult = result->Reducer_T.IEvNumber->Ok
               wrappedResult
             }
+
           | (Error(b), _) => Error(b)
           | (_, Error(b)) => Error(b)
           }
           resultWithOuterPoints
         }
+
       | Error(b) =>
         ("Integration error 2 in Danger.integrate. It's possible that your function doesn't return a number, try definining auxiliaryFunction(x) = mean(yourFunction(x)) and integrate auxiliaryFunction instead." ++
         "Original error: " ++
-        b->Reducer_ErrorValue.errorToString)
-        ->Reducer_ErrorValue.REOther
+        b->SqError.Message.toString)
+        ->SqError.Message.REOther
         ->Error
       }
       result
@@ -165,11 +167,11 @@ module Integration = {
         FnDefinition.make(
           ~name="integrateFunctionBetweenWithNumIntegrationPoints",
           ~inputs=[FRTypeLambda, FRTypeNumber, FRTypeNumber, FRTypeNumber],
-          ~run=(inputs, env, reducer) => {
+          ~run=(inputs, context, reducer) => {
             let result = switch inputs {
             | [_, _, _, IEvNumber(0.0)] =>
               "Integration error 4 in Danger.integrate: Increment can't be 0."
-              ->Reducer_ErrorValue.REOther
+              ->SqError.Message.REOther
               ->Error
             | [
                 IEvLambda(aLambda),
@@ -182,12 +184,12 @@ module Integration = {
                 min,
                 max,
                 numIntegrationPoints,
-                env,
+                context,
                 reducer,
               )
             | _ =>
               Error(
-                Reducer_ErrorValue.REOther(
+                SqError.Message.REOther(
                   "Integration error 5 in Danger.integrate. Remember that inputs are (function, number (min), number (max), number(increment))",
                 ),
               )
@@ -209,11 +211,11 @@ module Integration = {
         FnDefinition.make(
           ~name="integrateFunctionBetweenWithEpsilon",
           ~inputs=[FRTypeLambda, FRTypeNumber, FRTypeNumber, FRTypeNumber],
-          ~run=(inputs, env, reducer) => {
+          ~run=(inputs, context, reducer) => {
             let result = switch inputs {
             | [_, _, _, IEvNumber(0.0)] =>
               "Integration error in Danger.integrate: Increment can't be 0."
-              ->Reducer_ErrorValue.REOther
+              ->SqError.Message.REOther
               ->Error
             | [IEvLambda(aLambda), IEvNumber(min), IEvNumber(max), IEvNumber(epsilon)] =>
               Helpers.integrateFunctionBetweenWithNumIntegrationPoints(
@@ -221,15 +223,15 @@ module Integration = {
                 min,
                 max,
                 (max -. min) /. epsilon,
-                env,
+                context,
                 reducer,
-              )->E.R2.errMap(b =>
+              )->E.R.errMap(b =>
                 ("Integration error 7 in Danger.integrate. Something went wrong along the way: " ++
-                b->Reducer_ErrorValue.errorToString)->Reducer_ErrorValue.REOther
+                b->SqError.Message.toString)->SqError.Message.REOther
               )
             | _ =>
               "Integration error 8 in Danger.integrate. Remember that inputs are (function, number (min), number (max), number(increment))"
-              ->Reducer_ErrorValue.REOther
+              ->SqError.Message.REOther
               ->Error
             }
             result
@@ -246,7 +248,7 @@ module DiminishingReturns = {
   module Helpers = {
     type diminishingReturnsAccumulatorInner = {
       optimalAllocations: array<float>,
-      currentMarginalReturns: result<array<float>, errorValue>,
+      currentMarginalReturns: result<array<float>, errorMessage>,
     }
     let findBiggestElementIndex = (xs: array<float>) =>
       E.A.reducei(xs, 0, (acc, newElement, index) => {
@@ -255,8 +257,8 @@ module DiminishingReturns = {
         | false => acc
         }
       })
-    type diminishingReturnsAccumulator = result<diminishingReturnsAccumulatorInner, errorValue>
-    // TODO: This is so complicated, it probably should be its own file. It might also make sense to have it work in Rescript directly, taking in a function rather than a reducer; then something else can wrap that function in the reducer/lambdas/environment.
+    type diminishingReturnsAccumulator = result<diminishingReturnsAccumulatorInner, errorMessage>
+    // TODO: This is so complicated, it probably should be its own file. It might also make sense to have it work in Rescript directly, taking in a function rather than a reducer; then something else can wrap that function in the reducer/lambdas/context.
     /*
     The key idea for this function is that 
     1. we keep track of past spending and current marginal returns for each function
@@ -279,7 +281,7 @@ module DiminishingReturns = {
       lambdas,
       funds,
       approximateIncrement,
-      environment,
+      context,
       reducer,
     ) => {
       switch (
@@ -290,35 +292,35 @@ module DiminishingReturns = {
       ) {
       | (false, _, _, _) =>
         Error(
-          "Error in Danger.optimalAllocationGivenDiminishingMarginalReturnsForManyFunctions, number of functions should be greater than 1."->Reducer_ErrorValue.REOther,
+          "Error in Danger.optimalAllocationGivenDiminishingMarginalReturnsForManyFunctions, number of functions should be greater than 1."->SqError.Message.REOther,
         )
       | (_, false, _, _) =>
         Error(
-          "Error in Danger.optimalAllocationGivenDiminishingMarginalReturnsForManyFunctions, funds should be greater than 0."->Reducer_ErrorValue.REOther,
+          "Error in Danger.optimalAllocationGivenDiminishingMarginalReturnsForManyFunctions, funds should be greater than 0."->SqError.Message.REOther,
         )
       | (_, _, false, _) =>
         Error(
-          "Error in Danger.optimalAllocationGivenDiminishingMarginalReturnsForManyFunctions, approximateIncrement should be greater than 0."->Reducer_ErrorValue.REOther,
+          "Error in Danger.optimalAllocationGivenDiminishingMarginalReturnsForManyFunctions, approximateIncrement should be greater than 0."->SqError.Message.REOther,
         )
       | (_, _, _, false) =>
         Error(
-          "Error in Danger.optimalAllocationGivenDiminishingMarginalReturnsForManyFunctions, approximateIncrement should be smaller than funds amount."->Reducer_ErrorValue.REOther,
+          "Error in Danger.optimalAllocationGivenDiminishingMarginalReturnsForManyFunctions, approximateIncrement should be smaller than funds amount."->SqError.Message.REOther,
         )
       | (true, true, true, true) => {
           let applyFunctionAtPoint = (lambda, point: float) => {
-            // Defined here so that it has access to environment, reducer
+            // Defined here so that it has access to context, reducer
             let pointAsInternalExpression = FunctionRegistry_Helpers.Wrappers.evNumber(point)
-            let resultAsInternalExpression = Reducer_Expression_Lambda.doLambdaCall(
+            let resultAsInternalExpression = Reducer_Lambda.doLambdaCall(
               lambda,
               [pointAsInternalExpression],
-              environment,
+              context,
               reducer,
             )
             switch resultAsInternalExpression {
             | Reducer_T.IEvNumber(x) => Ok(x)
             | _ =>
               Error(
-                "Error 1 in Danger.optimalAllocationGivenDiminishingMarginalReturnsForManyFunctions. It's possible that your function doesn't return a number, try definining auxiliaryFunction(x) = mean(yourFunction(x)) and integrate auxiliaryFunction instead"->Reducer_ErrorValue.REOther,
+                "Error 1 in Danger.optimalAllocationGivenDiminishingMarginalReturnsForManyFunctions. It's possible that your function doesn't return a number, try definining auxiliaryFunction(x) = mean(yourFunction(x)) and integrate auxiliaryFunction instead"->SqError.Message.REOther,
               )
             }
           }
@@ -331,9 +333,8 @@ module DiminishingReturns = {
 
           let initAccumulator: diminishingReturnsAccumulator = Ok({
             optimalAllocations: Belt.Array.make(E.A.length(lambdas), 0.0),
-            currentMarginalReturns: E.A.fmap(
-              lambda => applyFunctionAtPoint(lambda, 0.0),
-              lambdas,
+            currentMarginalReturns: E.A.fmap(lambdas, lambda =>
+              applyFunctionAtPoint(lambda, 0.0)
             )->E.A.R.firstErrorOrOpen,
           })
 
@@ -362,6 +363,7 @@ module DiminishingReturns = {
                         result[indexOfBiggestDMR] = value
                         Ok(result)
                       }
+
                     | Error(b) => Error(b)
                     }
 
@@ -371,10 +373,12 @@ module DiminishingReturns = {
                     }
                     Ok(newAcc)
                   }
+
                 | Error(b) => Error(b)
                 }
                 newAccWrapped
               }
+
             | Error(b) => Error(b)
             }
           })
@@ -403,18 +407,18 @@ module DiminishingReturns = {
         FnDefinition.make(
           ~name="optimalAllocationGivenDiminishingMarginalReturnsForManyFunctions",
           ~inputs=[FRTypeArray(FRTypeLambda), FRTypeNumber, FRTypeNumber],
-          ~run=(inputs, environment, reducer) =>
+          ~run=(inputs, context, reducer) =>
             switch inputs {
             | [IEvArray(innerlambdas), IEvNumber(funds), IEvNumber(approximateIncrement)] => {
-                let individuallyWrappedLambdas = E.A.fmap(innerLambda => {
+                let individuallyWrappedLambdas = innerlambdas->E.A.fmap(innerLambda => {
                   switch innerLambda {
                   | Reducer_T.IEvLambda(lambda) => Ok(lambda)
                   | _ =>
                     "Error in Danger.optimalAllocationGivenDiminishingMarginalReturnsForManyFunctions. A member of the array wasn't a function"
-                    ->Reducer_ErrorValue.REOther
+                    ->SqError.Message.REOther
                     ->Error
                   }
-                }, innerlambdas)
+                })
                 let wrappedLambdas = E.A.R.firstErrorOrOpen(individuallyWrappedLambdas)
                 let result = switch wrappedLambdas {
                 | Ok(lambdas) => {
@@ -422,18 +426,20 @@ module DiminishingReturns = {
                       lambdas,
                       funds,
                       approximateIncrement,
-                      environment,
+                      context,
                       reducer,
                     )
                     result
                   }
+
                 | Error(b) => Error(b)
                 }
                 result
               }
+
             | _ =>
               "Error in Danger.diminishingMarginalReturnsForTwoFunctions"
-              ->Reducer_ErrorValue.REOther
+              ->SqError.Message.REOther
               ->Error
             },
           (),
