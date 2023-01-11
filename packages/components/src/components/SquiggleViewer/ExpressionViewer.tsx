@@ -1,39 +1,17 @@
 import React from "react";
-import { SqDistributionTag, SqValue, SqValueTag } from "@quri/squiggle-lang";
+import { SqDistributionTag, SqValue, SqPlot } from "@quri/squiggle-lang";
 import { NumberShower } from "../NumberShower";
-import { DistributionChart, defaultPlot, makePlot } from "../DistributionChart";
+import { DistributionChart } from "../DistributionChart";
+import {
+  sqPlotToPlot,
+  MultiDistributionChart,
+} from "../MultiDistributionChart";
 import { FunctionChart } from "../FunctionChart";
 import clsx from "clsx";
 import { VariableBox } from "./VariableBox";
 import { ItemSettingsMenu } from "./ItemSettingsMenu";
 import { hasMassBelowZero } from "../../lib/distributionUtils";
 import { MergedItemSettings } from "./utils";
-
-/*
-// DISABLED FOR NOW
-function getRange<a>(x: declaration<a>) {
-  const first = x.args[0];
-  switch (first.tag) {
-    case "Float": {
-      return { floats: { min: first.value.min, max: first.value.max } };
-    }
-    case "Date": {
-      return { time: { min: first.value.min, max: first.value.max } };
-    }
-  }
-}
-
-function getChartSettings<a>(x: declaration<a>): FunctionChartSettings {
-  const range = getRange(x);
-  const min = range.floats ? range.floats.min : 0;
-  const max = range.floats ? range.floats.max : 10;
-  return {
-    start: min,
-    stop: max,
-    count: 20,
-  };
-}
-*/
 
 const VariableList: React.FC<{
   value: SqValue;
@@ -60,11 +38,11 @@ export interface Props {
   width?: number;
 }
 
-export const ExpressionViewer: React.FC<Props> = ({ value, width }) => {
+export const ExpressionViewer: React.FC<Props> = ({ value }) => {
   const environment = value.location.project.getEnvironment();
 
   switch (value.tag) {
-    case SqValueTag.Number:
+    case "Number":
       return (
         <VariableBox value={value} heading="Number">
           {() => (
@@ -74,7 +52,7 @@ export const ExpressionViewer: React.FC<Props> = ({ value, width }) => {
           )}
         </VariableBox>
       );
-    case SqValueTag.Distribution: {
+    case "Dist": {
       const distType = value.value.tag;
       return (
         <VariableBox
@@ -93,7 +71,7 @@ export const ExpressionViewer: React.FC<Props> = ({ value, width }) => {
                 value={value}
                 onChange={onChange}
                 disableLogX={
-                  shape.tag === "Ok" && hasMassBelowZero(shape.value.asShape())
+                  shape.ok && hasMassBelowZero(shape.value.asShape())
                 }
                 withFunctionSettings={false}
               />
@@ -103,7 +81,7 @@ export const ExpressionViewer: React.FC<Props> = ({ value, width }) => {
           {(settings) => {
             return (
               <DistributionChart
-                plot={defaultPlot(value.value)}
+                distribution={value.value}
                 environment={environment}
                 chartHeight={settings.chartHeight}
                 settings={settings.distributionChartSettings}
@@ -113,7 +91,7 @@ export const ExpressionViewer: React.FC<Props> = ({ value, width }) => {
         </VariableBox>
       );
     }
-    case SqValueTag.String:
+    case "String":
       return (
         <VariableBox value={value} heading="String">
           {() => (
@@ -127,32 +105,32 @@ export const ExpressionViewer: React.FC<Props> = ({ value, width }) => {
           )}
         </VariableBox>
       );
-    case SqValueTag.Bool:
+    case "Bool":
       return (
         <VariableBox value={value} heading="Boolean">
           {() => value.value.toString()}
         </VariableBox>
       );
-    case SqValueTag.Date:
+    case "Date":
       return (
         <VariableBox value={value} heading="Date">
           {() => value.value.toDateString()}
         </VariableBox>
       );
-    case SqValueTag.Void:
+    case "Void":
       return (
         <VariableBox value={value} heading="Void">
           {() => "Void"}
         </VariableBox>
       );
-    case SqValueTag.TimeDuration: {
+    case "TimeDuration": {
       return (
         <VariableBox value={value} heading="Time Duration">
           {() => <NumberShower precision={3} number={value.value} />}
         </VariableBox>
       );
     }
-    case SqValueTag.Lambda:
+    case "Lambda":
       return (
         <VariableBox
           value={value}
@@ -186,7 +164,7 @@ export const ExpressionViewer: React.FC<Props> = ({ value, width }) => {
           )}
         </VariableBox>
       );
-    case SqValueTag.Declaration: {
+    case "Declaration": {
       return (
         <VariableBox
           value={value}
@@ -217,59 +195,54 @@ export const ExpressionViewer: React.FC<Props> = ({ value, width }) => {
         </VariableBox>
       );
     }
-    case SqValueTag.Record:
-      const plot = makePlot(value.value);
-      if (plot) {
-        return (
-          <VariableBox
-            value={value}
-            heading="Plot"
-            renderSettingsMenu={({ onChange }) => {
-              let disableLogX = plot.distributions.some((x) => {
-                let pointSet = x.distribution.pointSet(environment);
-                return (
-                  pointSet.tag === "Ok" &&
-                  hasMassBelowZero(pointSet.value.asShape())
-                );
-              });
-              return (
-                <ItemSettingsMenu
-                  value={value}
-                  onChange={onChange}
-                  disableLogX={disableLogX}
-                  withFunctionSettings={false}
-                />
-              );
-            }}
-          >
-            {(settings) => {
-              return (
-                <DistributionChart
-                  plot={plot}
-                  environment={environment}
-                  chartHeight={settings.chartHeight}
-                  settings={settings.distributionChartSettings}
-                />
-              );
-            }}
-          </VariableBox>
-        );
-      } else {
-        return (
-          <VariableList value={value} heading="Record">
-            {() => {
-              const entries = value.value.entries();
-              if (!entries.length) {
-                return <div className="text-slate-400">Empty record</div>;
-              }
-              return entries.map(([key, r]) => (
-                <ExpressionViewer key={key} value={r} />
-              ));
-            }}
-          </VariableList>
-        );
-      }
-    case SqValueTag.Array:
+    case "Plot":
+      const plot: SqPlot = value.value;
+      return (
+        <VariableBox
+          value={value}
+          heading="Plot"
+          renderSettingsMenu={({ onChange }) => {
+            let disableLogX = plot.distributions.some((x) => {
+              let pointSet = x.distribution.pointSet(environment);
+              return pointSet.ok && hasMassBelowZero(pointSet.value.asShape());
+            });
+            return (
+              <ItemSettingsMenu
+                value={value}
+                onChange={onChange}
+                disableLogX={disableLogX}
+                withFunctionSettings={false}
+              />
+            );
+          }}
+        >
+          {(settings) => {
+            return (
+              <MultiDistributionChart
+                plot={sqPlotToPlot(plot)}
+                environment={environment}
+                chartHeight={settings.chartHeight}
+                settings={settings.distributionChartSettings}
+              />
+            );
+          }}
+        </VariableBox>
+      );
+    case "Record":
+      return (
+        <VariableList value={value} heading="Record">
+          {() => {
+            const entries = value.value.entries();
+            if (!entries.length) {
+              return <div className="text-slate-400">Empty record</div>;
+            }
+            return entries.map(([key, r]) => (
+              <ExpressionViewer key={key} value={r} />
+            ));
+          }}
+        </VariableList>
+      );
+    case "Array":
       return (
         <VariableList value={value} heading="Array">
           {(_) =>
